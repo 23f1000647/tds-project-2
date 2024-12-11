@@ -1,18 +1,18 @@
-# Movie Ratings Analysis
+# Analysis of Movie Ratings and Attributes
 ## Introduction
-This dataset provides an overview of movie releases, capturing details such as release date, language, type, title, the actors involved, and ratings. The dataset focuses particularly on three key ratings: overall, quality, and repeatability, each assessed on a scale from 1 to 5. This comprehensive collection allows for insights regarding audience reception and content quality across various films.
+This dataset encompasses various attributes of movies, providing insights into their ratings, release dates, languages, and associated individuals (like actors). It aims to explore how these factors contribute to the perception of a movie's quality and overall enjoyment. Key attributes include date of release, language, type of content, movie title, cast, and detailed ratings categorized into overall rating, quality rating, and repeatability indicator.
 ## Metadata
 
 |Name  |Type  |Description  |
 |------|------|-------------|
-| date | datetime | The release date of the movie in DD-MMM-YY format |
-| language | string | The language of the movie |
-| type | string | The type of the content (e.g., movie) |
+| date | datetime | The release date of the movie |
+| language | string | The language in which the movie is made |
+| type | string | The type of the content, typically movie |
 | title | string | The title of the movie |
-| by | string | The actors involved in the movie, separated by commas |
-| overall | integer | Overall rating of the movie on a scale (1-5) |
-| quality | integer | Quality rating of the movie on a scale (1-5) |
-| repeatability | integer | Repeatability rating of the movie on a scale (1-5) |
+| by | string | The names of the individuals associated with the movie, such as actors |
+| overall | integer | Overall rating of the movie |
+| quality | integer | Quality rating of the movie |
+| repeatability | integer | Indicates if the movie is repeatable (1 for Yes, 2 for No) |
 ## Descriptive Statistics
 | Column | Count | Mean | Std | Min | 25% | 50% | 75% | Max |
 |--------|-------|------|-----|-----|-----|-----|-----|-----|
@@ -20,16 +20,21 @@ This dataset provides an overview of movie releases, capturing details such as r
 | quality | 2652.00 | 3.21 | 0.80 | 1.00 | 3.00 | 3.00 | 4.00 | 5.00 |
 | repeatability | 2652.00 | 1.49 | 0.60 | 1.00 | 1.00 | 1.00 | 2.00 | 3.00 |
 
-The descriptive statistics reveal that the overall ratings, quality ratings, and repeatability ratings are all measured on a 1-5 scale. Patterns may emerge indicating trends in viewer preferences, with potential outliers that could signify exceptional or poor reception. Notably, the presence of actors and their correlation with movie ratings could also suggest trends in audience appeal related to specific cast members.
+The movie dataset reveals diverse trends. The overall ratings range significantly, indicating a varied reception of movies. The quality ratings also provide insight into perceived production values, while the repeatability indicator highlights viewer engagement and satisfaction. Outliers in ratings may signify critically acclaimed films or those that were poorly received, warranting further investigation.
 ## Analysis
 
 ### Observation 1
-The image presents a correlation matrix showing the relationship between three variables: overall, quality, and repeatability. The values range from 0 to 1, where 1 indicates a perfect positive correlation, and values close to 0 indicate little or no correlation. The colors enhance readability, with darker shades signifying stronger correlations. Overall and quality show a strong positive correlation (0.83), while repeatability has a lower correlation with the other two variables, especially with quality (0.31). This suggests that while overall performance is closely linked to quality, the relationship with repeatability is weaker. This analysis can help in understanding how these variables interact and influence each other, which is vital in fields like manufacturing or quality control.The correlation matrix indicates that 'overall' and 'quality' are strongly correlated, while 'repeatability' shows a weaker correlation with both 'overall' and 'quality'.
+The graph depicts the trend of average overall movie ratings over time, spanning from 2005 to 2025. The data shows fluctuations in ratings, with a noticeable peak around 2007, followed by a decline until around 2014, after which the ratings start to increase again, particularly in the last couple of years, indicating a possible resurgence in movie quality or audience satisfaction.The overall trend analysis suggests that while movie ratings fluctuated significantly between 2005 and 2025, there is a potential upward trend in the most recent years, indicating a possible improvement in the quality of movies or shifts in audience preferences.
 
-![correlation_analysis.png](correlation_analysis.png)
+![movie_ratings_trend.png](movie_ratings_trend.png)
 
 ### Observation 2
-The image displays a histogram with a smooth density plot overlay, showing the distribution of overall ratings. It has three prominent peaks, suggesting that ratings tend to cluster around certain values (specifically 2.5, 3.5, and 4.5). The frequency increases significantly around these values, indicating they are popular ratings. The lower frequencies at the extremes (1.0 and 5.0) hint that extreme ratings are less common. Overall, the shape of the distribution is somewhat bimodal with a central tendency towards mid-level ratings.The distribution of overall ratings exhibits peaks around 2.5, 3.5, and 4.5, indicating that these ratings are more frequently assigned compared to lower (1.0) and higher (5.0) ends. This suggests a preference for moderate to high ratings among the respondents.
+The scatter plot illustrates the correlation between two variables: Quality Ratings and Overall Ratings. Each point represents an observation where higher Quality Ratings do not consistently correlate with higher Overall Ratings; instead, there seems to be a loose relationship without a clear trend. This suggests that while there may be some alignment, other factors might also be influencing Overall Ratings significantly.The plot indicates a weak correlation between Quality Ratings and Overall Ratings, suggesting that the two ratings may not directly influence one another.
 
-![overall_ratings_distribution.png](overall_ratings_distribution.png)
+![correlation_quality_overall.png](correlation_quality_overall.png)
+
+### Observation 3
+The chart presents data on the repeatability of movies categorized by language, displaying the count of movies for each repeatability level. It shows a clear predominance of movies in English and Tamil with higher counts, indicating that these languages have a larger production of repeatable movies compared to others such as German or French, which have significantly lower counts. The usage of different shades likely represents varying levels of repeatability.The chart indicates that English and Tamil are the most prolific languages in producing repeatable movies, while other languages like German and French have less representation.
+
+![repeatability_by_language.png](repeatability_by_language.png)
 
