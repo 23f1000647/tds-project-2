@@ -286,6 +286,7 @@ def getPayloadForImage(instruction, folderName, imagefile, functionName, functio
     Method to get the payload to be passed to LLM
     Args:
         instruction: str: instruction to be passed to LLM
+        folderName: str: folder name where image is stored
         imagefile: str: file name of image to be loaded and passed to LLM
         functionName: str: name of the function to be called
         function: dict: function description dictionary
@@ -318,8 +319,10 @@ def retryRequest(instruction, code, error, functionName):
     '''
     Method to retry the request
     Args:
+        instruction: str: instruction to be passed to LLM
         code: str: code block to be executed
         error: str: error message
+        functionName: str: name of the function to be called
     Returns:
         requests.Response: response from LLM
     '''
@@ -337,6 +340,9 @@ def requestAndExecuteLLM(instruction, userContent, functionName,df,folderName,fi
         instruction: str: instruction to be passed to LLM
         userContent: str: user content to be passed to LLM
         functionName: str: name of the function to be called
+        df: DataFrame: dataframe to be referred by code from LLM
+        folderName: str: folder name to save the output file
+        fileName: str: path to the file
     '''
     function_descriptions = FUNCTIONS_DESCRIPTIONS_DICT[functionName]
     json_data = getPayload(instruction, userContent, functionName,function_descriptions)
@@ -372,6 +378,8 @@ def requestInferenceForImageData(instruction, imageFile, functionName, folderNam
         instruction: str: instruction to be passed to LLM
         userContent: str: user content to be passed to LLM
         functionName: str: name of the function to be called
+        folderName: str: folder name to save the output file
+        fileName: str: path to the file
     '''
     function_descriptions = FUNCTIONS_DESCRIPTIONS_DICT[functionName]
     json_data = getPayloadForImage(instruction, folderName, imageFile, functionName, function_descriptions)
@@ -385,8 +393,8 @@ def saveChart(output_file,folder_name):
     '''
     Method to save the chart to a file
     Args:
-        chart: object: chart object
         output_file: str: path to the output file
+        folder_name: str: folder name to save the output file
     '''
     if os.path.exists(output_file):
         try:
@@ -456,6 +464,7 @@ def addAnalysisSection(file_path,section=f"## Summary\n"):
     Method to add analysis section to the README.md file
     Args:
         file_path: str: path to the file
+        section: str: section to add the content
     '''
     addContentToReadme(file_path, "", section)
 
@@ -465,7 +474,8 @@ def addAnalysis(file_path, image_file, content, section=f"### Obervation 1\n"):
     Args:
         file_path: str: path to the file
         image_file: str: path to the image file
-        rationale: str: rationale for the analysis
+        content: str: content to be added
+        section: str: section to add the content
     '''
     addContentToReadme(file_path, f"{content}\n\n![{image_file}]({image_file})\n", section)
 
@@ -483,9 +493,9 @@ def addDescriptiveStatistics(fileName, statistics, summary, section = f"## Descr
     '''
     Method to add descriptive statistics to the README.md file
     Args:
-        file_path: str: path to the file
-        desc_stats: dict: descriptive statistics
-        content: list: metadata content
+        fileName: str: path to the file
+        statistics: dict: descriptive statistics
+        summary: str: summary of the statistics
         section: str: section to add the content
     '''
     markdown_table = "| Column | Count | Mean | Std | Min | 25% | 50% | 75% | Max |\n"
