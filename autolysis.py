@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
 #   "httpx",
 #   "pandas",
@@ -544,32 +544,66 @@ def getIntroAndSummary(instruction, data, functionName):
     response = requestLLM(instruction, data, functionName)
     return json.loads(response['choices'][0]['message']['function_call']['arguments'])
 
+def addInitialDetailsToFile(file_path, df, metadata, introsummaryresponse):
+    '''
+    Method to add initial details to the README.md file
+    Args:
+        file_path: str: path to the file
+        df: DataFrame: dataframe to be referred by code from LLM
+        metadata: list: metadata of the columns
+        introsummaryresponse: dict: response from LLM
+    '''
+    addTitle(file_path, introsummaryresponse['title'])
+    addIntroduction(file_path, introsummaryresponse['introduction'])
+    addMetaData(file_path, [{'name':col['name'], 'type':col['type'], 'description':col['description']} for col in metadata])
+    addDescriptiveStatistics(file_path, df[getNumericalColumns(metadata)].describe().transpose(), introsummaryresponse['summary'])
+    addAnalysisSection(file_path, "## Analysis\n")
+
+def fetchAndAddAnalysisSection(folderName, file_path, df, metadata, introsummaryresponse, part):
+    '''
+    Method to fetch and add analysis section to the README.md file
+    Args:
+        folderName: str: folder name to save the output file
+        file_path: str: path to the file
+        df: DataFrame: dataframe to be referred by code from LLM
+        metadata: list: metadata of the columns
+        introsummaryresponse: dict: response from LLM
+        part: int: part number
+    '''
+    prompt = introsummaryresponse['next_analysis'][part]
+    image_file, rationale = requestAndExecuteLLM(GENERIC_CODE_INSTRUCTION + prompt, json.dumps(metadata), 'get_code_for_analysis',df,folderName,file_path)
+    print(f"Output file: {image_file}, rationale: {rationale}")
+    rationale, inference = requestInferenceForImageData(CONCLUSION_PROMPT, image_file, 'get_inference',folderName,file_path)
+    print(f"rationale: {rationale}, inference: {inference}")
+    addAnalysis(file_path, image_file, rationale + inference, "### Observation "+str(part+1)+"\n")
+
 def loadFileAndAnalyze(fileName):
     '''
     Method to load the file and analyze it
     Args:
         fileName: str: path to the file
     '''
+    #Create the subfolder required
     folderName = fileName[:-4]
     os.makedirs(folderName, exist_ok=True)
     file_path = os.path.join(folderName, OUTPUT_FILE)
+
+    #Identify file encoding and load to df
     encoding = getFileEncoding(fileName)
     df = pd.read_csv(fileName, encoding=encoding)
+
+    #Get Metadata
     metadata = getMetadata(METADATA_INSTRUCTION, df[0:10].to_csv(index=False), 'get_column_dtypes')
+
+    #Given Metadata, get the introduction, summary and next analysis
     introsummaryresponse = getIntroAndSummary(INTRO_AND_DESCRIPTIVE_STATS_INSTRUCTION, json.dumps(metadata), 'get_intro_stats_summary')
-    print(introsummaryresponse)
-    addTitle(file_path, introsummaryresponse['title'])
-    addIntroduction(file_path, introsummaryresponse['introduction'])
-    addMetaData(file_path, [{'name':col['name'], 'type':col['type'], 'description':col['description']} for col in metadata])
-    addDescriptiveStatistics(file_path, df[getNumericalColumns(metadata)].describe().transpose(), introsummaryresponse['summary'])
-    addAnalysisSection(file_path, "## Analysis\n")
+    
+    #Add details to the README.md file
+    addInitialDetailsToFile(file_path, df, metadata, introsummaryresponse)
+
+    #Iterate over the next analysis and get the code and inference
     for part in range(len(introsummaryresponse['next_analysis'])):
-        prompt = introsummaryresponse['next_analysis'][part]
-        image_file, rationale = requestAndExecuteLLM(GENERIC_CODE_INSTRUCTION + prompt, json.dumps(metadata), 'get_code_for_analysis',df,folderName,file_path)
-        print(f"Output file: {image_file}, rationale: {rationale}")
-        rationale, inference = requestInferenceForImageData(CONCLUSION_PROMPT, image_file, 'get_inference',folderName,file_path)
-        print(f"rationale: {rationale}, inference: {inference}")
-        addAnalysis(file_path, image_file, rationale + inference, "### Observation "+str(part+1)+"\n")
+        fetchAndAddAnalysisSection(folderName, file_path, df, metadata, introsummaryresponse, part)
 
 
 if __name__ == "__main__":
