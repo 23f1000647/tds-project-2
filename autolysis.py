@@ -82,7 +82,7 @@ FUNCTIONS_DESCRIPTIONS_DICT = {
                                     'description':'Determine if the column is suitable for descriptive statistics (True/False) using the following guidelines: Numerical or continuous data is preferred, Identifiers or purely categorical data should not be considered, Consider the analytical value of data and relevance to potential use cases'
                                 }
                             },
-                            'requried':['column_name','column_type','description','stats']
+                            'required':['column_name','column_type','description','stats']
                         },
                         'minItems':1
                     }
@@ -188,27 +188,6 @@ FUNCTIONS_DESCRIPTIONS_DICT = {
             }
         }
     ],
-    'get_prompts_for_analysis': [
-        {
-            'name':'get_prompts_for_analysis',
-            'description':'Given the columns, data types and descriptive statistics, provide atleast 3 more unique prompts for further analysis',
-            'parameters':{
-                'type':'object',
-                'properties':{
-                    'prompts':{
-                        'type':'array',
-                        'description':'Unique prompts for further analysis',
-                        'items':{
-                            'type':'string',
-                            'description': 'Prompt to request LLM for the given dataset to return code and export chart'
-                        },
-                        'minItems':3
-                    }
-                },
-                'required':['prompts']
-            }
-        }
-    ],
     'get_feedback': [
         {
             'name':'get_feedback',
@@ -227,6 +206,38 @@ FUNCTIONS_DESCRIPTIONS_DICT = {
                     'recommendations': {
                         'type': 'string',
                         'description': 'What to do next?'
+                    }
+                },
+                'required':['rationale','inference']
+            }
+        }
+    ],
+    'get_narrative': [
+        {
+            'name':'get_narrative',
+            'description':'From the given details, provide a narrative or story based on the input shared',
+            'parameters':{
+                'type':'object',
+                'properties':{
+                    'preprocessing': {
+                        'type': 'string',
+                        'description': 'Narrate the outcome of the preprocessing steps outcome'
+                    },
+                    'correlation': {
+                        'type': 'string',
+                        'description': 'Narrate the story of the correlation analysis outcome'
+                    },
+                    'outliers': {
+                        'type': 'string',
+                        'description': 'Narrate the story of the outliers analysis outcome'
+                    },
+                    'cluster': {
+                        'type': 'string',
+                        'description': 'Narrate the story of the cluster analysis outcome'
+                    },
+                    'summary': {
+                        'type': 'string',
+                        'description': 'Narrate the overall summary of the analysis explaining the insights and recommendations'
                     }
                 },
                 'required':['rationale','inference']
@@ -263,10 +274,6 @@ GENERIC_CODE_INSTRUCTION = (
 ADVANCED_ANALYSIS_INSTRUCTION = (
     "Code should check for unique values of thr column being used analysis"
     "If this is greater than a certain threshold, then use sorting to find the top 10 values"
-)
-
-PROMPT_FOR_ANALYSIS_INSTRUCTION = (
-    "Given the dataset's columns, data types, and descriptive statistics, provide at least three unique prompts for further analysis"
 )
 
 CONCLUSION_PROMPT = (
@@ -372,6 +379,7 @@ def handleRequest(instruction, userContent, functionName):
     '''
     json_data = getPayload(instruction, userContent, functionName)
     response = requests.post(AIPROXY_URL,headers=HEADERS,json=json_data)
+    print(response)
     return response.json()
 
 def loadFile(fileName):
@@ -486,19 +494,6 @@ def getSummaryAndNextSteps(df,statsInfo):
     arguments = json.loads(response['choices'][0]['message']['function_call']['arguments'])
     return arguments
 
-def getPromptsForAnalysis(df, statsInfo):
-    '''
-    Method to get the prompts from LLM based on input data for further analysis
-    Args:
-        df: DataFrame: dataframe to be analyzed
-        statsInfo: dict: descriptive statistics
-    Returns:
-        list: prompts for further analysis
-    '''
-    content = f"Columns:{df.columns}\n\nData Types:{df.dtypes}\n\nStatistics: {statsInfo}"
-    response = handleRequest(PROMPT_FOR_ANALYSIS_INSTRUCTION, content, 'get_prompts_for_analysis')
-    return json.loads(response['choices'][0]['message']['function_call']['arguments'])['prompts']
-
 def handleRequestAndExecute(instruction, content, functionName,df):
     '''
     Method to handle the request and execute the code returned by LLM
@@ -539,7 +534,7 @@ def handleRequestAndExecute(instruction, content, functionName,df):
 
     return ""
 
-def performAnalysis(df, statsInfo, summaryInfo):
+def advancedAnalytics(df, statsInfo, summaryInfo):
     '''
     Method to perform analysis on the dataframe
     Args:
@@ -554,38 +549,25 @@ def performAnalysis(df, statsInfo, summaryInfo):
     analysis_output = []
     if summaryInfo["time_series"]["isavailable"]:
         try:
-            prompt = GENERIC_CODE_INSTRUCTION + summaryInfo['time_series']['prompt']
+            prompt = GENERIC_CODE_INSTRUCTION + ADVANCED_ANALYSIS_INSTRUCTION + summaryInfo['time_series']['prompt']
             title, output_file, rationale = handleRequestAndExecute(prompt,content,"get_code_for_analysis",df)
             analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
         except Exception as e:
             print(f"Error: {e}")
-
-    if summaryInfo["geospatial"]["isavailable"]:
+    elif summaryInfo["geospatial"]["isavailable"]:
         try:
-            prompt = GENERIC_CODE_INSTRUCTION + summaryInfo['geospatial']['prompt']
+            prompt = GENERIC_CODE_INSTRUCTION  + ADVANCED_ANALYSIS_INSTRUCTION + summaryInfo['geospatial']['prompt']
             title, output_file, rationale = handleRequestAndExecute(prompt,content,"get_code_for_analysis",df)
             analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
         except Exception as e:
             print(f"Error: {e}")
-
-    if summaryInfo["network"]["isavailable"]:
+    elif summaryInfo["network"]["isavailable"]:
         try:
-            prompt = GENERIC_CODE_INSTRUCTION + summaryInfo['network']['prompt']
+            prompt = GENERIC_CODE_INSTRUCTION  + ADVANCED_ANALYSIS_INSTRUCTION + summaryInfo['network']['prompt']
             title, output_file, rationale = handleRequestAndExecute(prompt,content,"get_code_for_analysis",df)
             analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
         except Exception as e:
             print(f"Error: {e}")
-
-    if len(analysis_output) < 3:
-        prompts = getPromptsForAnalysis(df, statsInfo)
-        for prompt in prompts:
-            try:
-                prompt = GENERIC_CODE_INSTRUCTION + prompt
-                title, output_file, rationale = handleRequestAndExecute(prompt, content, "get_code_for_analysis",df)
-                analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
-            except Exception as e:
-                print(f"Error: {e}")
-
     return analysis_output
 
 def applyKMeansClustering(df, featureInfo, n_clusters=5):
@@ -685,13 +667,12 @@ def addContentToReadme(content, section = f"# Title\n"):
           print(file.name)
           if section == f"# Title\n":
             file.write("# "+content+"\n")
-          elif (section == f"## Summary\n"):
+          elif (section == f"## Analysis\n"):
             if (content == ""):
               file.write(section)
             else:
               file.write(content+'\n')
           else:
-            print(f"section:{section}, content={content}")
             file.write(section)
             file.write(content+'\n')
     except Exception as e:
@@ -727,35 +708,46 @@ def addMetaData(content, section = f"## Metadata\n"):
     markdown_content = f"{table_header}{table_rows}"
     addContentToReadme(markdown_content, section)
 
-def addAnalysisSection(correlationInfo, outliersInfo, clusterInfo, section=f"## Analysis\n"):
+def addAnalysisSection(correlationInfo, outliersInfo, clusterInfo, analysisSummary, narrative, section=f"## Analysis\n"):
     '''
     Method to add analysis section to the README.md file
     Args:
-        analysis: list: analysis output
-        section: str: section to add the content
+        correlationInfo: dict: correlation information
+        outliersInfo: dict: outliers information
+        clusterInfo: dict: cluster information
+        narrative: dict: narrative information
+        section: str: section to add the
     '''
-    addTitle("", section)
     correlation_output_file = correlationInfo['output_file']
-    markdown_content = f"\n\nBelow is the correlation heatmap"
+    markdown_content = f"\n\n### Correlation \n\nBelow is the correlation heatmap"
     markdown_content += f"\n\n![{correlation_output_file}]({correlation_output_file})"
-    
+    markdown_content += f"\n\n{narrative['correlation']}"
+
     outlierItems = outliersInfo['outlier_values']
-    markdown_content += "\n\nBelow are the outlier details"
+    markdown_content += "\n\n### Outlier Detection \n\nBelow are the outlier details"
     table_header = "\n|Column  |(Min,Max) |\n|------|------|\n"
     table_rows = "\n".join([f"| {key} | {value} |" for key,value in outlierItems.items()])
     markdown_content += f"{table_header}{table_rows}"
     outliers_output_file = outliersInfo['output_file']
     markdown_content += f"\n\n![{outliers_output_file}]({outliers_output_file})"
+    markdown_content += f"\n\n{narrative['outliers']}"
 
-    markdown_content += "\n\nBelow are the cluster details"
+    markdown_content += "\n\n### K-Means Cluster \n\nBelow are the cluster details"
     table_header = "\n|Cluster  |Count  |\n|------|------|\n"
     table_rows = "\n".join([f"| {key} | {value} |" for key,value in clusterInfo['clusters'].items()])
     markdown_content += f"{table_header}{table_rows}"
     cluster_output_file = clusterInfo['output_file']
     markdown_content += f"\n\n![{cluster_output_file}]({cluster_output_file})"
+    markdown_content += f"\n\n{narrative['cluster']}"
+
+    for item in analysisSummary:
+        markdown_content += f"\n\n### {item['title']} \n\nBelow is the analysis"
+        markdown_content += f"\n\n![{item['output_file']}]({item['output_file']})"
+        markdown_content += f"\n\n{item['insights']}"
+        markdown_content += f"\n\n{item['recommendation']}"
+
+    markdown_content += f"\n\n## Summary\n\n{narrative['summary']}"
     addContentToReadme(markdown_content, section)
-    # for item in analysis:
-    #     addContentToReadme(f"### {item['title']}\n\n{item['rationale']}\n\n![{item['output_file']}]({item['output_file']})\n\n{item['inference']}\n\n{item['insights']}\n\n{item['recommendation']}", section)
 
 def safe_format(value):
     '''
@@ -807,22 +799,26 @@ def addPreProcessingDetails(updated_values, clusterInfo, section = f"## Preproce
     markdown_content += f"{table_header}{table_rows}"
     addContentToReadme(markdown_content, section)
 
-def createReadMeFile(df, metadata, stats, updated_values, correlationInfo, outliersInfo, clusterInfo, summary):
+def createReadMeFile(df, metadata, stats, updated_values, correlationInfo, outliersInfo, clusterInfo, summary, analysisSummary, narrative):
     '''
     Method to create the README.md file
     Args:
-        df: DataFrame: dataframe to be referred by code from LLM
+        df: DataFrame: dataframe to be analyzed
         metadata: list: metadata of the columns
         stats: dict: descriptive statistics
-        summary: dict: summary of the statistics
-        analysis: list: analysis output
+        updated_values: dict: updated values after preprocessing
+        correlationInfo: dict: correlation information
+        outliersInfo: dict: outliers information
+        clusterInfo: dict: clusters information
+        summary: dict: summary and next steps
+        narrative: dict: narrative information
     '''
     addTitle(summary['title'])
     addIntroduction(summary['introduction'])
     addMetaData([{'name':col['name'], 'type':col['type'], 'description':col['description']} for col in metadata])
     addDescriptiveStatistics(stats, summary['summary'])
     addPreProcessingDetails(updated_values, clusterInfo)
-    addAnalysisSection(correlationInfo, outliersInfo, clusterInfo, "## Analysis\n")
+    addAnalysisSection(correlationInfo, outliersInfo, clusterInfo, analysisSummary, narrative, "## Analysis\n")
 
 def getInsightsFromImage(imageFile):
     '''
@@ -911,8 +907,19 @@ def analyseOutliers(df, featureInfo):
     
     return {"outliers":outliers, "outlier_values":outlier_ranges, "output_file":output_file}
 
-
-
+def provideNarrative(df, statsInfo, updated_values, correlationInfo, outliersInfo, clusterInfo):
+    '''
+    Method to provide the narrative to the user
+    Args:
+        df: DataFrame: dataframe to be analyzed
+        updated_values: dict: updated values after preprocessing
+        correlationInfo: dict: correlation information
+        outliersInfo: dict: outliers information
+        clusterInfo: dict: clusters information
+    '''
+    content = f"Columns:{df.columns}\n\nData Types:{df.dtypes}\n\nstatistics: {statsInfo}\n\nUpdated Values: {updated_values}\n\nCorrelation: {correlationInfo['high_corr_matrix']}\n\nOutliers: {outliersInfo['outlier_values']}\n\nCluster: {clusterInfo['clusters']}"
+    response = handleRequest("Provide the narrative", content, 'get_narrative')
+    return json.loads(response['choices'][0]['message']['function_call']['arguments'])
 
 def analyse(fileName):
     try:
@@ -925,7 +932,7 @@ def analyse(fileName):
         statsInfo = getDescriptiveStats(df, featureInfo)
         print("Descriptive Stats populated successfully")
 
-        df, updated_values = dataPreprocessing(df,featureInfo, statsInfo)
+        df, updatedValues = dataPreprocessing(df,featureInfo, statsInfo)
         print("Preprocessing done successfully")
 
         correlationInfo = getHighCorrelation(df, featureInfo)
@@ -940,14 +947,17 @@ def analyse(fileName):
         clusterInfo = applyKMeansClustering(df, featureInfo)
         print("CLustering done successfully")
 
-        # analysisSummary = performAnalysis(df, statsInfo, summaryInfo)
-        # print("Analysis done successfully")
+        analysisSummary = advancedAnalytics(df, statsInfo, summaryInfo)
+        print("Analysis done successfully")
 
-        # analysisSummary = getInsights(analysisSummary)
-        # print("Generated insights successfully")
+        analysisSummary = getInsights(analysisSummary)
+        print("Generated insights successfully")
+
+        narrative = provideNarrative(df, statsInfo, updatedValues, correlationInfo, outliersInfo, clusterInfo)
+        print("Narrative generated successfully")
 
         #Add details to the README.md file
-        createReadMeFile(df, featureInfo, statsInfo, updated_values, correlationInfo, outliersInfo, clusterInfo, summaryInfo)
+        createReadMeFile(df, featureInfo, statsInfo, updatedValues, correlationInfo, outliersInfo, clusterInfo, summaryInfo, analysisSummary, narrative)
         print("Output written to README.md")
     
     except Exception as e:
