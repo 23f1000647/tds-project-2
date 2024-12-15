@@ -8,7 +8,9 @@
 #   "seaborn",
 #   "chardet",
 #   "scikit-learn",
-#   "geopandas"
+#   "geopandas",
+#   "scipy",
+#   "matplotlib"
 # ]
 # ///
 
@@ -25,6 +27,12 @@ import base64
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 import geopandas as gpd
+from scipy.stats import zscore
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 
 AIPROXY_TOKEN = os.getenv("AIPROXY_TOKEN")
 MAX_RETRY = os.getenv("MAX_RETRY", 3)
@@ -291,6 +299,13 @@ def getFunctionDescriptions(functionName):
     return FUNCTIONS_DESCRIPTIONS_DICT[functionName]
 
 def readImage(imagefile):
+    '''
+    Method to read the image file
+    Args:
+        imagefile: str: path to the image file
+    Returns:
+        bytes: image data
+    '''
     try:
         with open(imagefile, 'rb') as file:
             image_data = file.read()
@@ -301,6 +316,15 @@ def readImage(imagefile):
     return image_data
 
 def createMessagePayload(instruction, userContent, imageFile):
+    '''
+    Method to create the message payload to be passed to LLM, including the image
+    Args:
+        instruction: str: instruction to be passed to LLM
+        userContent: str: user content to be passed to LLM
+        imageFile: str: path to the image file
+    Returns:
+        dict: message payload to be passed to LLM
+    '''
     if imageFile == "":
         return [
             {'role':'system','content':instruction},
@@ -323,7 +347,7 @@ def getPayload(instruction, userContent, functionName, imageFile = ""):
         instruction: str: instruction to be passed to LLM
         userContent: str: user content to be passed to LLM
         functionName: str: name of the function to be called
-        function: dict: function description dictionary
+        imageFile: str: path to the image file
     Returns:
         dict: payload to be passed to LLM
     '''
@@ -348,12 +372,15 @@ def handleRequest(instruction, userContent, functionName):
     '''
     json_data = getPayload(instruction, userContent, functionName)
     response = requests.post(AIPROXY_URL,headers=HEADERS,json=json_data)
-    print(response.json())
     return response.json()
 
 def loadFile(fileName):
     '''
     Method to load the file
+    Args:
+        fileName: str: path to the file
+    Returns:
+        DataFrame: dataframe loaded from the file
     '''
     try:
         encoding = getFileEncoding(fileName)
@@ -363,15 +390,38 @@ def loadFile(fileName):
         print(f"Error: {e}")
 
 def getFeatureInfo(df):
+    '''
+    Method to get the feature information such as name, type, description, min_value, statistics could be calculated
+    Args:
+        df: DataFrame: dataframe to be analyzed
+    Returns:
+        dict: feature information
+    '''
     featureInfo = handleRequest(METADATA_INSTRUCTION, df[0:7].to_csv(index=False), 'get_column_dtypes')
     return json.loads(featureInfo['choices'][0]['message']['function_call']['arguments'])['column_metadata']
 
 def getMinValue(featureInfo, columnName):
-  for item in featureInfo:
-    if item['name'] == columnName:
-      return item['min_value']
+    '''
+    Method to get the minimum value for a column based on the feature information returned by LLM
+    Args:
+        featureInfo: dict: feature information
+        columnName: str: column name
+    Returns:
+        int/float: minimum value for the column
+    '''
+    for item in featureInfo:
+        if item['name'] == columnName:
+            return item['min_value']
     
 def getDescriptiveStats(df, featureInfo):
+    '''
+    Method to get the descriptive statistics for the dataframe
+    Args:
+        df: DataFrame: dataframe to be analyzed
+        featureInfo: dict: feature information
+    Returns:
+        dict: descriptive statistics
+    '''
     nullValues = df.isnull().sum().to_dict()
     columnForStats = [feature['name'] for feature in featureInfo if feature['stats']]
     descriptiveStats = df[columnForStats].describe().to_dict()
@@ -381,33 +431,85 @@ def getDescriptiveStats(df, featureInfo):
             stats['invalid'] = df[df[key] < getMinValue(featureInfo, key)].shape[0]
     return descriptiveStats
 
-def dataPreprocessing(df,featureInfo, statsInfo):
-    #Impute missing numeric values with mean
-    imputer = SimpleImputer(missing_values=np.nan,strategy='mean')
-    transformer = ColumnTransformer([('impute',imputer,list(statsInfo.keys()))
-                                    ],remainder='passthrough',verbose_feature_names_out=False)
+def dataPreprocessing(df, featureInfo, statsInfo):
+    '''
+    Method to preprocess the data, impute missing values and remove invalid values for numerical features and remove rows with missing values
+    Args:
+        df: DataFrame: dataframe to be analyzed
+        featureInfo: dict: feature information
+        statsInfo: dict: descriptive statistics
+    Returns:
+        DataFrame: preprocessed dataframe
+    '''
+    # Initialize counters
+    dropped_rows = 0
+    below_range_values = {col: 0 for col in statsInfo.keys()}
+
+    # Impute missing numeric values with mean
+    imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
+    transformer = ColumnTransformer([('impute', imputer, list(statsInfo.keys()))],
+                                    remainder='passthrough', verbose_feature_names_out=False)
     df_imputed = transformer.fit_transform(df)
-    df_imputed = pd.DataFrame(df_imputed,columns=transformer.get_feature_names_out())
+    df_imputed = pd.DataFrame(df_imputed, columns=transformer.get_feature_names_out())
 
+    # Loop through columns and check for values below the minimum
     for col in df_imputed.columns:
-      if col in statsInfo.keys():
-        df_imputed.loc[df_imputed[col] < getMinValue(featureInfo, col), col] = np.nan
+        if col in statsInfo.keys():
+            min_value = getMinValue(featureInfo, col)
+            below_range = df_imputed[col] < min_value
+            below_range_count = below_range.sum()  # Count of values below the minimum
 
+            # Track how many values are below the minimum
+            below_range_values[col] = below_range_count
+
+            # Set values below the range to NaN
+            df_imputed.loc[below_range, col] = np.nan
+
+    # Drop rows with any NaN values
+    dropped_rows = df_imputed.isna().sum(axis=1).sum()  # Count total NaN values (which will be dropped)
     df_imputed.dropna(inplace=True)
-    return df_imputed
+    update_details = {"dropped_rows": dropped_rows, "out_of_range_values": below_range_values}
+    return df_imputed, update_details
 
 def getSummaryAndNextSteps(df,statsInfo):
+    '''
+    Method to get the summary and next steps for the analysis
+    Args:
+        df: DataFrame: dataframe to be analyzed
+        statsInfo: dict: descriptive statistics
+    Returns:
+        dict: summary and next steps
+    '''
     content = f"Columns:{df.columns}\n\nData Types:{df.dtypes}\n\nStatistics: {statsInfo}"
     response = handleRequest(INTRO_AND_DESCRIPTIVE_STATS_INSTRUCTION, content, 'get_intro_stats_summary')
+    print(response)
     arguments = json.loads(response['choices'][0]['message']['function_call']['arguments'])
     return arguments
 
 def getPromptsForAnalysis(df, statsInfo):
+    '''
+    Method to get the prompts from LLM based on input data for further analysis
+    Args:
+        df: DataFrame: dataframe to be analyzed
+        statsInfo: dict: descriptive statistics
+    Returns:
+        list: prompts for further analysis
+    '''
     content = f"Columns:{df.columns}\n\nData Types:{df.dtypes}\n\nStatistics: {statsInfo}"
     response = handleRequest(PROMPT_FOR_ANALYSIS_INSTRUCTION, content, 'get_prompts_for_analysis')
     return json.loads(response['choices'][0]['message']['function_call']['arguments'])['prompts']
 
 def handleRequestAndExecute(instruction, content, functionName,df):
+    '''
+    Method to handle the request and execute the code returned by LLM
+    Args:
+        instruction: str: instruction to be passed to LLM
+        content: str: content to be passed to LLM
+        functionName: str: name of the function to be called
+        df: DataFrame: dataframe to be analyzed
+    Returns:
+        str: title, output file, rationale
+    '''
     response = handleRequest(instruction, content, functionName)
     codeBlock = ""
     error = ""
@@ -437,7 +539,16 @@ def handleRequestAndExecute(instruction, content, functionName,df):
 
     return ""
 
-def promptForAnalysis(df, statsInfo, summaryInfo):
+def performAnalysis(df, statsInfo, summaryInfo):
+    '''
+    Method to perform analysis on the dataframe
+    Args:
+        df: DataFrame: dataframe to be analyzed
+        statsInfo: dict: descriptive statistics
+        summaryInfo: dict: summary and next steps
+    Returns:
+        list: analysis output
+    '''
     content = f"Columns:{df.columns}\n\nData Types:{df.dtypes}\n\nStatistics: {statsInfo}"
 
     analysis_output = []
@@ -477,11 +588,95 @@ def promptForAnalysis(df, statsInfo, summaryInfo):
 
     return analysis_output
 
+def applyKMeansClustering(df, featureInfo, n_clusters=5):
+    '''
+    Apply KMeans clustering on the data and plot the clusters.
+    Args:
+        df: DataFrame: input data to be clustered
+        featureInfo: dict: feature information
+        n_clusters: int: number of clusters for KMeans
+    Returns:
+        dict: clusters information
+    '''
+    numerical_columns = [feature['name'] for feature in featureInfo if feature['stats']]
+    df[numerical_columns] = df[numerical_columns].apply(pd.to_numeric, errors='coerce')
+
+    print(numerical_columns)
+
+    # Apply KMeans clustering
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    df['Cluster'] = kmeans.fit_predict(df[numerical_columns])
+
+    # Reduce dimensions to 2D using PCA for better visualization
+    pca = PCA(n_components=2)
+    pca_components = pca.fit_transform(df[numerical_columns]) # Exclude 'Cluster' from PCA
+    print(pca_components.shape)
+
+    # Create a new DataFrame for plotting
+    df_pca = pd.DataFrame(pca_components, columns=['PC1', 'PC2'])
+    df_pca['Cluster'] = df['Cluster']
+
+    # Generate and save the cluster visualization chart
+    output_file = "clusters.png"
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(data=df_pca, x='PC1', y='PC2', hue='Cluster', palette="viridis", s=100, marker='o', edgecolor='k', alpha=0.7)
+    plt.title('KMeans Clustering (2D PCA Projection)', fontsize=16)
+    plt.xlabel('PC1')
+    plt.ylabel('PC2')
+    plt.legend(title='Cluster')
+    plt.tight_layout()
+    plt.savefig(output_file)
+    plt.close()
+
+    clusters = df['Cluster'].value_counts().to_dict()
+    clusterInfo = {"clusters":clusters, "output_file":output_file}
+    return clusterInfo
+
+def getHighCorrelation(df, featureInfo, threshold=0.8):
+    '''
+    Generate a correlation heatmap for the numerical columns in the dataframe
+    and return significant correlations greater than a defined threshold.
+    
+    Args:
+        df: DataFrame: Input dataframe with numerical columns
+        threshold: float: Correlation threshold to consider for significance
+    
+    Returns:
+        significant_corr: DataFrame: A DataFrame with significant correlations
+    '''
+    numerical_columns = [feature['name'] for feature in featureInfo if feature['stats']]
+    df[numerical_columns] = df[numerical_columns].apply(pd.to_numeric, errors='coerce')
+    # Compute the correlation matrix
+    corr_matrix = df[numerical_columns].corr()
+
+    output_file = "correlation_heatmap.png"
+    # Generate the heatmap
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
+    
+    # Add title and labels
+    plt.title('Correlation Heatmap', fontsize=16)
+    plt.tight_layout()
+    plt.savefig(output_file)
+    
+    # Filter out correlations that are greater than the threshold (absolute value)
+    # This will exclude the diagonal (self-correlations) and correlations below the threshold
+    high_corr_matrix = corr_matrix.abs() > threshold
+    high_corr_matrix = high_corr_matrix.where(high_corr_matrix).stack().reset_index()
+    
+    # Renaming columns for clarity
+    high_corr_matrix.columns = ['Feature1', 'Feature2', 'Correlation']
+    
+    # Removing duplicate pairs (e.g., (A, B) and (B, A))
+    high_corr_matrix = high_corr_matrix[high_corr_matrix['Feature1'] < high_corr_matrix['Feature2']]
+    
+    correlationInfo = {"high_corr_matrix":high_corr_matrix, "output_file":output_file}
+    return correlationInfo
+
 def addContentToReadme(content, section = f"# Title\n"):
     '''
     Method to add content to the README.md file
     Args:
-        file_path: str: path to the file
         content: str: content to be added
         section: str: section to add the content
     '''
@@ -506,7 +701,6 @@ def addTitle(content, section = f"# Title\n"):
     '''
     Method to add title to the README.md file
     Args:
-        file_path: str: path to the file
         content: str: title content
         section: str: section to add the content
     '''
@@ -516,7 +710,6 @@ def addIntroduction(content, section = f"## Introduction\n"):
     '''
     Method to add introduction to the README.md file
     Args:
-        file_path: str: path to the file
         content: str: introduction content
         section: str: section to add the content
     '''
@@ -526,7 +719,6 @@ def addMetaData(content, section = f"## Metadata\n"):
     '''
     Method to add metadata section to the README.md file
     Args:
-        file_path: str: path to the file
         content: list: metadata content
         section: str: section to add the content
     '''
@@ -535,16 +727,35 @@ def addMetaData(content, section = f"## Metadata\n"):
     markdown_content = f"{table_header}{table_rows}"
     addContentToReadme(markdown_content, section)
 
-def addAnalysisSection(analysis,section=f"## Summary\n"):
+def addAnalysisSection(correlationInfo, outliersInfo, clusterInfo, section=f"## Analysis\n"):
     '''
     Method to add analysis section to the README.md file
     Args:
-        file_path: str: path to the file
+        analysis: list: analysis output
         section: str: section to add the content
     '''
     addTitle("", section)
-    for item in analysis:
-        addContentToReadme(f"### {item['title']}\n\n{item['rationale']}\n\n![{item['output_file']}]({item['output_file']})\n\n{item['inference']}\n\n{item['insights']}\n\n{item['recommendation']}", section)
+    correlation_output_file = correlationInfo['output_file']
+    markdown_content = f"\n\nBelow is the correlation heatmap"
+    markdown_content += f"\n\n![{correlation_output_file}]({correlation_output_file})"
+    
+    outlierItems = outliersInfo['outlier_values']
+    markdown_content += "\n\nBelow are the outlier details"
+    table_header = "\n|Column  |(Min,Max) |\n|------|------|\n"
+    table_rows = "\n".join([f"| {key} | {value} |" for key,value in outlierItems.items()])
+    markdown_content += f"{table_header}{table_rows}"
+    outliers_output_file = outliersInfo['output_file']
+    markdown_content += f"\n\n![{outliers_output_file}]({outliers_output_file})"
+
+    markdown_content += "\n\nBelow are the cluster details"
+    table_header = "\n|Cluster  |Count  |\n|------|------|\n"
+    table_rows = "\n".join([f"| {key} | {value} |" for key,value in clusterInfo['clusters'].items()])
+    markdown_content += f"{table_header}{table_rows}"
+    cluster_output_file = clusterInfo['output_file']
+    markdown_content += f"\n\n![{cluster_output_file}]({cluster_output_file})"
+    addContentToReadme(markdown_content, section)
+    # for item in analysis:
+    #     addContentToReadme(f"### {item['title']}\n\n{item['rationale']}\n\n![{item['output_file']}]({item['output_file']})\n\n{item['inference']}\n\n{item['insights']}\n\n{item['recommendation']}", section)
 
 def safe_format(value):
     '''
@@ -560,7 +771,6 @@ def addDescriptiveStatistics(statistics, summary, section = f"## Descriptive Sta
     '''
     Method to add descriptive statistics to the README.md file
     Args:
-        fileName: str: path to the file
         statistics: dict: descriptive statistics
         summary: str: summary of the statistics
         section: str: section to add the content
@@ -584,7 +794,20 @@ def getNumericalColumns(metadata):
     '''
     return [entry['name'] for entry in metadata if ((entry['type'] in ['integer','float']) & entry['stats'])]
 
-def createReadMeFile(df, metadata, stats, summary, analysis):
+def addPreProcessingDetails(updated_values, clusterInfo, section = f"## Preprocessing\n"):
+    '''
+    Method to add preprocessing details to the README.md file
+    Args:
+        updated_values: dict: updated values after preprocessing
+        section: str: section to add the content
+    '''
+    markdown_content = f"Rows dropped: {updated_values['dropped_rows']}\n\nBelow are count of values ignored due to out of range"
+    table_header = "\n|Column  |Count  |\n|------|------|\n"
+    table_rows = "\n".join([f"| {key} | {value} |" for key,value in updated_values['out_of_range_values'].items()])
+    markdown_content += f"{table_header}{table_rows}"
+    addContentToReadme(markdown_content, section)
+
+def createReadMeFile(df, metadata, stats, updated_values, correlationInfo, outliersInfo, clusterInfo, summary):
     '''
     Method to create the README.md file
     Args:
@@ -598,23 +821,97 @@ def createReadMeFile(df, metadata, stats, summary, analysis):
     addIntroduction(summary['introduction'])
     addMetaData([{'name':col['name'], 'type':col['type'], 'description':col['description']} for col in metadata])
     addDescriptiveStatistics(stats, summary['summary'])
-    addAnalysisSection(analysis, "## Summary\n")
-
-
-
+    addPreProcessingDetails(updated_values, clusterInfo)
+    addAnalysisSection(correlationInfo, outliersInfo, clusterInfo, "## Analysis\n")
 
 def getInsightsFromImage(imageFile):
+    '''
+    Method to get insights from the image
+    Args:
+        imageFile: str: path to the image file
+    Returns:
+        str: inference, insights, recommendation
+    '''
     response = handleRequest(CONCLUSION_PROMPT, imageFile, 'get_feedback')
     inference, insights, recommendation = json.loads(response['choices'][0]['message']['function_call']['arguments']).values()
     return inference, insights, recommendation
 
 def getInsights(analysisSummary):
+    '''
+    Method to get insights from the analysis summary
+    Args:
+        analysisSummary: list: analysis summary
+    Returns:
+        list: analysis summary with insights
+    '''
     for item in analysisSummary:
         inference, insights, recommendation = getInsightsFromImage(item['output_file'])
         item['inference'] = inference
         item['insights'] = insights
         item['recommendation'] = recommendation
     return analysisSummary
+
+def analyseOutliers(df, featureInfo):
+    '''
+    Method to analyze the outliers in the dataframe and plot them in a single chart with normalized y-axis.
+    Args:
+        df: DataFrame: dataframe to be analyzed
+        featureInfo: dict: feature information
+    Returns:
+        dict: outliers information
+    '''
+    # Extract numerical columns
+    numerical_columns = [feature['name'] for feature in featureInfo if feature['stats']]
+    df[numerical_columns] = df[numerical_columns].apply(pd.to_numeric, errors='coerce')
+
+    # Compute z-scores
+    z_scores = df[numerical_columns].apply(zscore)
+    outliers = (z_scores.abs() > 3)
+    
+    # Initialize a single plot
+    plt.figure(figsize=(12, 8))
+    
+    # Assign unique colors to each column
+    palette = sns.color_palette("tab10", len(numerical_columns))
+    
+    # Loop through numerical columns and plot
+    normalization_factors = {}
+    for idx, col in enumerate(numerical_columns):
+        # Normalize column values for better visibility
+        normalization_factor = df[col].max() - df[col].min()
+        normalization_factors[col] = normalization_factor
+        normalized_values = df[col] / normalization_factor
+        
+        sns.scatterplot(
+            x=df.index[outliers[col]],  # Only plot outliers
+            y=normalized_values[outliers[col]],
+            color=palette[idx],
+            label=f"{col} (Norm Factor: {normalization_factor:.2f})"
+        )
+    output_file = "outliers_combined_normalized.png"
+    # Add titles and labels
+    plt.title("Outliers Across Numerical Columns (Normalized)")
+    plt.xlabel("Index")
+    plt.ylabel("Normalized Value")
+    plt.legend(title="Columns (Normalization Factor)")
+    plt.tight_layout()
+    
+    # Save the combined chart
+    plt.savefig(output_file)
+    plt.close()
+
+    outlier_ranges = {}
+    for col in numerical_columns:
+        outlier_values = df[col][outliers[col]]
+        if not outlier_values.empty:
+            min_val, max_val = outlier_values.min(), outlier_values.max()
+            outlier_ranges[col] = (min_val, max_val)
+        else:
+            outlier_ranges[col] = None  # No outliers found for this column
+    
+    return {"outliers":outliers, "outlier_values":outlier_ranges, "output_file":output_file}
+
+
 
 
 def analyse(fileName):
@@ -628,20 +925,29 @@ def analyse(fileName):
         statsInfo = getDescriptiveStats(df, featureInfo)
         print("Descriptive Stats populated successfully")
 
-        df = dataPreprocessing(df,featureInfo, statsInfo)
+        df, updated_values = dataPreprocessing(df,featureInfo, statsInfo)
         print("Preprocessing done successfully")
+
+        correlationInfo = getHighCorrelation(df, featureInfo)
+        print("Correlation done successfully")
+
+        outliersInfo = analyseOutliers(df, featureInfo)
+        print("Outliers analysis done successfully")
 
         summaryInfo = getSummaryAndNextSteps(df,statsInfo)
         print("Summary generation done successfully")
 
-        analysisSummary = promptForAnalysis(df, statsInfo, summaryInfo)
-        print("Analysis done successfully")
+        clusterInfo = applyKMeansClustering(df, featureInfo)
+        print("CLustering done successfully")
 
-        analysisSummary = getInsights(analysisSummary)
-        print("Generated insights successfully")
+        # analysisSummary = performAnalysis(df, statsInfo, summaryInfo)
+        # print("Analysis done successfully")
+
+        # analysisSummary = getInsights(analysisSummary)
+        # print("Generated insights successfully")
 
         #Add details to the README.md file
-        createReadMeFile(df, featureInfo, statsInfo, summaryInfo, analysisSummary)
+        createReadMeFile(df, featureInfo, statsInfo, updated_values, correlationInfo, outliersInfo, clusterInfo, summaryInfo)
         print("Output written to README.md")
     
     except Exception as e:
