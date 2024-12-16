@@ -558,14 +558,14 @@ def advancedAnalytics(df, statsInfo, summaryInfo):
             analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
         except Exception as e:
             print(f"Error: {e}")
-    elif summaryInfo["geospatial"]["isavailable"]:
+    if summaryInfo["geospatial"]["isavailable"]:
         try:
             prompt = GENERIC_CODE_INSTRUCTION  + ADVANCED_ANALYSIS_INSTRUCTION + summaryInfo['geospatial']['prompt']
             title, output_file, rationale = executeRequest(prompt,content,"get_code_for_analysis",df)
             analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
         except Exception as e:
             print(f"Error: {e}")
-    elif summaryInfo["network"]["isavailable"]:
+    if summaryInfo["network"]["isavailable"]:
         try:
             prompt = GENERIC_CODE_INSTRUCTION  + ADVANCED_ANALYSIS_INSTRUCTION + summaryInfo['network']['prompt']
             title, output_file, rationale = executeRequest(prompt,content,"get_code_for_analysis",df)
