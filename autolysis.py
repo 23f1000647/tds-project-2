@@ -266,7 +266,6 @@ GENERIC_CODE_INSTRUCTION = (
     "Return only Python code, without comments"
     "Assume the dataset is available in a DataFrame named 'df'; do not create synthetic data"
     "Use the provided column or feature names exactly as given"
-    # "Ensure the figure size does not exceed (5.12, 5.12) and set the dpi to a maximum of 100"
     "Do not display the chart; export it directly as a PNG file"
     "Use Seaborn for all plotting tasks"
 )
@@ -379,7 +378,6 @@ def handleRequest(instruction, userContent, functionName):
     '''
     json_data = getPayload(instruction, userContent, functionName)
     response = requests.post(AIPROXY_URL,headers=HEADERS,json=json_data)
-    print(response)
     return response.json()
 
 def loadFile(fileName):
@@ -510,20 +508,23 @@ def handleRequestAndExecute(instruction, content, functionName,df):
     error = ""
     attempt = 0
     flag = True
+    # Loop to retry in case of any exception
     while ((attempt < MAX_RETRY) & flag):
         try:
             if attempt > 0:
               content = f"code={codeBlock}\nerror={error}"
               response = handleRequest(instruction, content, functionName)
+            #Get the code block, output file and rationale from the response
             codeBlock = json.loads(response['choices'][0]['message']['function_call']['arguments'])['python_code']
             output_file = json.loads(response['choices'][0]['message']['function_call']['arguments'])['output_file']
             rationale = json.loads(response['choices'][0]['message']['function_call']['arguments'])['rationale']            
             title = json.loads(response['choices'][0]['message']['function_call']['arguments'])['title']
+            # Execute the code block
             exec(codeBlock)
             flag = False
             return title, output_file, rationale
         except Exception as e:
-            print(f"Exception message: {str(e)}")
+            # Print the error and retry
             buffer = io.StringIO()
             traceback.print_exc(file=buffer)
             error = buffer.getvalue()
@@ -919,7 +920,7 @@ def provideNarrative(df, statsInfo, updated_values, correlationInfo, outliersInf
     '''
     content = f"Columns:{df.columns}\n\nData Types:{df.dtypes}\n\nstatistics: {statsInfo}\n\nUpdated Values: {updated_values}\n\nCorrelation: {correlationInfo['high_corr_matrix']}\n\nOutliers: {outliersInfo['outlier_values']}\n\nCluster: {clusterInfo['clusters']}"
     response = handleRequest("Provide the narrative", content, 'get_narrative')
-    return json.loads(response['choices'][0]['message']['function_call']['arguments'])
+    return json.loads(response['choices'][0]['message']['function_call']['arguments'])    
 
 def analyse(fileName):
     try:
