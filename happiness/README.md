@@ -1,21 +1,21 @@
-# Analysis of Global Life Well-Being Indicators
+# Global Happiness and Socioeconomic Factors Analysis (2005-2023)
 ## Introduction
-This dataset encompasses well-being indicators across various countries from 2005 to 2023. The indicators include aspects such as GDP per capita, social support, healthy life expectancy, and perceptions of corruption. It comprises numeric values that reflect subjective life satisfaction measures as represented through the 'Life Ladder'. Each entry provides a snapshot of different countries' circumstances regarding these facets of well-being.
+The dataset encompasses global data on life satisfaction, expressed as the 'Life Ladder', alongside various socioeconomic attributes such as Log GDP per capita, social support, and perceptions of corruption. It spans the years 2005 to 2023 and includes approximately 2363 entries for a variety of countries, facilitating a comprehensive analysis of how these factors correlate with perceived happiness levels across different nations.
 ## Metadata
 
 |Name  |Type  |Description  |
 |------|------|-------------|
-| Country name | string | The name of the country |
-| year | integer | Year of the observation |
-| Life Ladder | float | A measure of subjective well-being |
+| Country name | string | Name of the country |
+| year | integer | Year of the data |
+| Life Ladder | float | Measure of subjective well-being |
 | Log GDP per capita | float | Logarithm of GDP per capita |
 | Social support | float | Perceived social support |
-| Healthy life expectancy at birth | float | Healthy life expectancy at birth in years |
-| Freedom to make life choices | float | Freedom to make life choices rating |
-| Generosity | float | Generosity rating |
-| Perceptions of corruption | float | Perceived levels of corruption |
-| Positive affect | float | Positive affect rating |
-| Negative affect | float | Negative affect rating |
+| Healthy life expectancy at birth | float | Average healthy life expectancy at birth |
+| Freedom to make life choices | float | Freedom to make personal choices |
+| Generosity | float | Generosity score |
+| Perceptions of corruption | float | Corruption perception score |
+| Positive affect | float | Level of positive affect |
+| Negative affect | float | Level of negative affect |
 ## Descriptive Statistics
 | Column | Count | Mean | Std | Min | 25% | 50% | 75% | Max | Null | Invalid |
 |--------|-------|------|-----|-----|-----|-----|-----|-----|------|---------|
@@ -30,49 +30,78 @@ This dataset encompasses well-being indicators across various countries from 200
 | Positive affect | 2339.00 | 0.65 | 0.11 | 0.18 | 0.57 | 0.66 | 0.74 | 0.88 |24.00 |0.00 |
 | Negative affect | 2347.00 | 0.27 | 0.09 | 0.08 | 0.21 | 0.26 | 0.33 | 0.70 |16.00 |0.00 |
 
-The dataset contains 2363 records with key variables that include yearly measurements of life satisfaction, GDP, social support, life expectancy, personal freedoms, generosity, and perceptions of corruption. The mean 'Life Ladder' score is 5.48 with a noticeable minimum of 1.281, indicating disparities in life satisfaction. The highest GDP per capita recorded is 11.676 with a mean of 9.40, emphasizing economic variances among countries. There are observable trends in social support and health expectancy, where notably lower values could signify areas needing attention. Notable outliers exist in the 'Generosity' metric with maximum values reaching 0.7 against the mean of almost negligible values. The dataset shows some missing entries, particularly in the Generosity column with 81 nulls.
+Key observations reveal an average Life Ladder score of approximately 5.48, indicating a moderate level of life satisfaction among the global population sampled. The Log GDP per capita shows some correlation with happiness levels, evidenced by a mean value around 9.40, yet outliers exist, including lower scores in emerging economies. Noteworthy trends include higher social support scores correlating with increased life satisfaction, while perceptions of corruption inversely relate to happiness levels. Notable anomalies include some countries with low GDP per capita but high Life Ladder scores, suggesting cultural or social factors may significantly influence happiness.
+## Preprocessing
+Rows dropped: 1488
+
+Below are count of values ignored due to out of range
+|Column  |Count  |
+|------|------|
+| year | 218 |
+| Life Ladder | 0 |
+| Log GDP per capita | 0 |
+| Social support | 0 |
+| Healthy life expectancy at birth | 0 |
+| Freedom to make life choices | 0 |
+| Generosity | 1270 |
+| Perceptions of corruption | 0 |
+| Positive affect | 0 |
+| Negative affect | 0 |
+
+
+### Correlation 
+
+Below is the correlation heatmap
+
+![correlation_heatmap.png](correlation_heatmap.png)
+
+The correlation analysis revealed strong relationships between key features within the dataset. Notably, there was a significant positive correlation between 'Life Ladder' and 'Log GDP per capita', indicating that nations with higher log GDP tend to report greater life satisfaction. Additionally, 'Healthy life expectancy at birth' also showed a positive correlation with 'Log GDP per capita', suggesting that wealthier countries tend to have healthier populations. This highlights the interconnectedness of economic prosperity and overall well-being in nations.
+
+### Outlier Detection 
+
+Below are the outlier details
+|Column  |(Min,Max) |
+|------|------|
+| year | None |
+| Life Ladder | (np.float64(1.281), np.float64(1.446)) |
+| Log GDP per capita | (np.float64(5.527), np.float64(5.527)) |
+| Social support | (np.float64(0.228), np.float64(0.373)) |
+| Healthy life expectancy at birth | (np.float64(17.36), np.float64(38.64)) |
+| Freedom to make life choices | (np.float64(0.228), np.float64(0.39)) |
+| Generosity | (np.float64(0.508), np.float64(0.7)) |
+| Perceptions of corruption | (np.float64(0.047), np.float64(0.047)) |
+| Positive affect | (np.float64(0.206), np.float64(0.363)) |
+| Negative affect | (np.float64(0.564), np.float64(0.705)) |
+
+![outliers_combined_normalized.png](outliers_combined_normalized.png)
+
+In the examination of outliers, several features stood out prominently. Extreme values of 'Life Ladder' were observed, with an outlier range extending down to 1.281 and extending up to 1.446. Similarly, 'Log GDP per capita' also displayed a critical outlier at the lower extreme, with a minimum value of 5.527. Other features like 'Healthy life expectancy at birth' indicated an unusually wide range, with an outlier low point set at 17.36 years. Identifying these outliers is crucial as they can disproportionately affect the overall analysis and insights derived from the data.
+
+### K-Means Cluster 
+
+Below are the cluster details
+|Cluster  |Count  |
+|------|------|
+| 4 | 242 |
+| 0 | 206 |
+| 3 | 205 |
+| 1 | 204 |
+| 2 | 118 |
+
+![clusters.png](clusters.png)
+
+The clustering analysis produced five distinct clusters categorized by varying sizes. Cluster 4 emerged as the largest, encompassing 242 entries, while the other clusters had slightly smaller populations: Cluster 0 with 206, Cluster 3 with 205, Cluster 1 with 204, and Cluster 2, the smallest, comprising 118 entries. This classification hints at differing levels of well-being among countries, influenced by their socio-economic features.
+
+### Life Ladder Trends Analysis 
+
+Below is the analysis
+
+![life_ladder_analysis.png](life_ladder_analysis.png)
+
+The life ladder analysis provides insight into how people perceive their overall life satisfaction, potentially revealing trends related to age, occupation, socio-economic status, and mental health.
+
+To use this information constructively, consider conducting surveys to gather more data on different demographics, and implement targeted programs to support individuals at the lower rungs of the ladder, aiming to improve their overall life satisfaction.
+
 ## Summary
-### Trends Over Time for Well-Being Indicators
 
-This analysis aims to visualize how various well-being indicators have changed over time using line plots. Trends can be observed in metrics such as Life Ladder, Social Support, and others, providing insights into societal changes.
-
-![well_being_trends.png](well_being_trends.png)
-
-The image likely shows various trends related to well-being, possibly including statistics on mental health, physical health, and social connections over a given period.
-
-This trend data may reveal where people focus their well-being efforts, indicating a growing awareness of mental health or perhaps shifts in social behavior, particularly in response to recent global events.
-
-Encourage the integration of well-being practices in workplaces and communities. Provide resources to support mental health, promote physical activity, and foster social connections to align with observed trends.
-### Geographical Distribution of Life Ladder vs Log GDP per capita
-
-This analysis visualizes the relationship between GDP per capita and life satisfaction (Life Ladder) across different countries. The scatter plot allows for assessment of how economic status (GDP) correlates with perceived well-being.
-
-![geographical_distribution_well_being.png](geographical_distribution_well_being.png)
-
-The image depicts a geographical distribution map highlighting various regions' levels of well-being, potentially using different colors or gradients to indicate varying degrees of health, prosperity, and quality of life.
-
-The variations in well-being may reflect socio-economic factors, healthcare access, educational opportunities, and environmental conditions that differ from one region to another. Areas with higher levels of well-being may have better infrastructure, more resources, and stronger social support systems, while regions with lower well-being could be facing challenges like poverty, poor healthcare, or inadequate education.
-
-To address the disparities shown in the map, targeted interventions should be considered, such as increasing investment in healthcare and education in lower well-being areas. Policies aimed at economic development and social support might also help balance these disparities, and further research could be conducted to identify the specific factors contributing to well-being in high and low-scoring regions.
-### Correlation between Life Ladder and Log GDP per capita
-
-This analysis aims to explore the relationship between economic development, as measured by Log GDP per capita, and subjective well-being, evaluated through the Life Ladder score across different countries.
-
-![life_ladder_vs_log_gdp.png](life_ladder_vs_log_gdp.png)
-
-The image likely compares two metrics: life satisfaction or happiness (represented by a life ladder) and logarithmic GDP per capita. The life ladder is a common metric used in surveys to assess subjective well-being, while log GDP indicates economic performance and wealth.
-
-This comparison suggests a relationship between economic prosperity and individual well-being. Countries with higher log GDP may show a trend of higher life satisfaction, but the exact correlation may vary. This could indicate that while income levels contribute to life satisfaction, they may not be the sole factor influencing happiness.
-
-Further analysis should consider additional variables such as social equality, health care quality, and cultural factors that might impact both metrics. Policymakers should focus on addressing these factors alongside economic growth to enhance overall well-being.
-### Impact Analysis of Happiness Factors
-
-This analysis visually examines the correlation between Social support, Freedom to make life choices, and Positive affect to determine which has a greater impact on individual happiness.
-
-![impact_analysis.png](impact_analysis.png)
-
-The image likely depicts a flowchart or diagram outlining the impact analysis process for a project or initiative, with various factors being evaluated for potential impact on stakeholders, resources, or timelines.
-
-Impact analysis is crucial for understanding both the direct and indirect effects of changes or planned actions. It helps in identifying key stakeholders, potential risks, and areas that require mitigation or enhancement. By systematically assessing these impacts, organizations can make informed decisions that align with strategic goals.
-
-To enhance the impact analysis process, consider the following: 1. Involve diverse stakeholders to gather varied perspectives. 2. Utilize quantitative and qualitative metrics for a comprehensive assessment. 3. Document and communicate findings effectively to ensure all team members are informed. 4. Review and update the impact analysis periodically to reflect changing circumstances or new data.
+The overall analysis indicates a complex interplay between economic factors and societal well-being. The retained dataset, while diminished in size due to preprocessing, provides a valuable foundation for exploring how different attributes impact life satisfaction across nations. The correlation findings suggest a strong linkage between GDP and well-being, advocating for policies aimed at not only improving economic conditions but also enhancing health and social support systems. The identification of outliers beckons further investigation into the anomalies present in the dataset, which may reveal underlying social or economic phenomena. Efforts should be directed towards ensuring better data quality by managing missing values, particularly for the 'Generosity' feature. The clustering results could inform targeted interventions, tailored to distinct groups of countries based on their characteristics. Future research can leverage these insights to advocate for policies that are both economically and socially enriching.
