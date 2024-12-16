@@ -10,7 +10,7 @@
 #   "scikit-learn",
 #   "geopandas",
 #   "scipy",
-#   "matplotlib"
+#   "matplotlib",
 # ]
 # ///
 
@@ -33,6 +33,8 @@ import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
+from functools import lru_cache
+
 
 AIPROXY_TOKEN = os.getenv("AIPROXY_TOKEN")
 MAX_RETRY = os.getenv("MAX_RETRY", 3)
@@ -366,6 +368,7 @@ def getPayload(instruction, userContent, functionName, imageFile = ""):
     } 
     return json_data
 
+@lru_cache(maxsize=5)
 def handleRequest(instruction, userContent, functionName):
     '''
     Method to call LLM
@@ -492,7 +495,7 @@ def getSummaryAndNextSteps(df,statsInfo):
     arguments = json.loads(response['choices'][0]['message']['function_call']['arguments'])
     return arguments
 
-def handleRequestAndExecute(instruction, content, functionName,df):
+def executeRequest(instruction, content, functionName,df):
     '''
     Method to handle the request and execute the code returned by LLM
     Args:
@@ -551,21 +554,21 @@ def advancedAnalytics(df, statsInfo, summaryInfo):
     if summaryInfo["time_series"]["isavailable"]:
         try:
             prompt = GENERIC_CODE_INSTRUCTION + ADVANCED_ANALYSIS_INSTRUCTION + summaryInfo['time_series']['prompt']
-            title, output_file, rationale = handleRequestAndExecute(prompt,content,"get_code_for_analysis",df)
+            title, output_file, rationale = executeRequest(prompt,content,"get_code_for_analysis",df)
             analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
         except Exception as e:
             print(f"Error: {e}")
     elif summaryInfo["geospatial"]["isavailable"]:
         try:
             prompt = GENERIC_CODE_INSTRUCTION  + ADVANCED_ANALYSIS_INSTRUCTION + summaryInfo['geospatial']['prompt']
-            title, output_file, rationale = handleRequestAndExecute(prompt,content,"get_code_for_analysis",df)
+            title, output_file, rationale = executeRequest(prompt,content,"get_code_for_analysis",df)
             analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
         except Exception as e:
             print(f"Error: {e}")
     elif summaryInfo["network"]["isavailable"]:
         try:
             prompt = GENERIC_CODE_INSTRUCTION  + ADVANCED_ANALYSIS_INSTRUCTION + summaryInfo['network']['prompt']
-            title, output_file, rationale = handleRequestAndExecute(prompt,content,"get_code_for_analysis",df)
+            title, output_file, rationale = executeRequest(prompt,content,"get_code_for_analysis",df)
             analysis_output.append({"title":title, "output_file":output_file, "rationale":rationale})
         except Exception as e:
             print(f"Error: {e}")
@@ -888,8 +891,8 @@ def analyseOutliers(df, featureInfo):
     output_file = "outliers_combined_normalized.png"
     # Add titles and labels
     plt.title("Outliers Across Numerical Columns (Normalized)")
-    plt.xlabel("Index")
-    plt.ylabel("Normalized Value")
+    plt.xlabel("Data Point ID")
+    plt.ylabel("Normalized Feature Value")
     plt.legend(title="Columns (Normalization Factor)")
     plt.tight_layout()
     
@@ -910,7 +913,7 @@ def analyseOutliers(df, featureInfo):
 
 def provideNarrative(df, statsInfo, updated_values, correlationInfo, outliersInfo, clusterInfo):
     '''
-    Method to provide the narrative to the user
+    Method creates an agentic workflow to generate a narrative based on the analysis results, Makes use of LLM to generate the narrative
     Args:
         df: DataFrame: dataframe to be analyzed
         updated_values: dict: updated values after preprocessing
